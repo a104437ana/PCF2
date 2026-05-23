@@ -1,8 +1,22 @@
-\documentclass[a4paper,12pt]{article}
-
+\documentclass[a4paper,12pt]{report}
+\usepackage{minted}
 \usepackage[utf8]{inputenc}
+\usepackage{float}
+\usepackage{graphicx}
 \usepackage{geometry}
 \geometry{margin=2.5cm}
+\setlength{\parindent}{0pt}
+\usepackage{titlesec}
+\titleformat{\chapter}[display]
+{\Huge\bfseries}
+{\chaptername\ \thechapter}
+{10pt}
+{}
+
+\titlespacing*{\chapter}
+{0pt}
+{0pt}
+{15pt}
 
 \title{\textbf{Modelling and analysis of a cyber-physical system now with monads}
 \\[1em] \large Practical assignment 2 of the Cyber-Physical Programming course}
@@ -12,21 +26,1301 @@
 \begin{document}
 
 \maketitle
+\tableofcontents
+\newpage
 
-\section{Introduction}
-This is the report of the second practical assignment of the Cyber-Physical Programming course. The goal of this assignment was
+\chapter{Introduction}
+This is the report of the second practical assignment of the Cyber-Physical Programming course. The goal of this assignment is
 to complete 3 tasks related to the modelling and analysis of a cyber-physical system using monads.
+\\[1em]
+The assignment is centred around the Bridge and Torch problem, a classic puzzle in which
+four adventurers must cross a bridge at night with a single torch. The bridge can hold at
+most two people at a time, and the torch must always accompany whoever is crossing.
+Each adventurer has a different crossing time, and when two cross together the slower one
+determines the total time. The goal is to get everyone across in at most 17 minutes.
+A skeleton implementation in Haskell was provided, including the base types and some
+initial functions, which we extended and corrected throughout the three tasks.
+\chapter{First task}
+\section{Code corrections}
+First, I noticed a mistake in the function \textbf{changeState} that was given in the assignment. The function was defined as follows:
+\begin{minted}{haskell}
+changeState :: Objects -> State -> State
+changeState o s = \x -> if x == o then not (s o) else s o
+\end{minted}
+However, when x is not equal to o, the function should return the value of \textbf{s x} instead of \textbf{s o}.
+We want to change the state of the object o, but we want to keep the state of all other objects unchanged.
+Therefore, the correct definition of the function is as follows:
+\begin{minted}{haskell}
+changeState :: Objects -> State -> State
+changeState o s = \x -> if x == o then not (s o) else s x
+\end{minted}
 
-\section{Tasks}
-\subsection{First task}
+\section{Function getTimeAdv}
+The first thing I had to do in the first task was to define the function \textbf{getTimeAdv} that given an adventure, returns the time that the adventure takes to cross the bridge.
+This function is defined as follows:
+\begin{minted}{haskell}
+getTimeAdv :: Adventure -> Time
+getTimeAdv P1 = 1
+getTimeAdv P2 = 2
+getTimeAdv P5 = 5
+getTimeAdv P10 = 10
+\end{minted}
 
-\subsection{Second task}
+P1 is the adventurer that takes 1 minute to cross the bridge, P2 is the adventurer that takes 2 minutes to cross the bridge, P5 is the adventurer that takes 5 minutes to cross the bridge and P10 is the adventurer that takes 10 minutes to cross the bridge.
 
-\subsection{Third task}
+\section{Function allValidPlays}
+The second thing I had to do was to define the function \textbf{allValidPlays} that given a state of the game, returns all possible moves that the adventurers can make.
+\\[1em]
+To do this, I first defined one auxiliary function.
+\subsection{Function advsWithLantern}
+The function \textbf{advsWithLantern} receives a state of the game and returns a list of adventurers that are on the same side as the lantern.
+It returns the adventures that are with the lantern,
+the adventurers that can cross the bridge and therefore the adventurers that can be part of a valid move.
+This function is defined as follows:
+\begin{minted}{haskell}
+advsWithLantern :: State -> [Adventurer]
+advsWithLantern s = filter (\a -> s (Left a) == s(Right())) [P1, P2, P5, P10]
+\end{minted}
+We filter the list of all adventurers to get only those that are on the same side as the lantern
+(being on the same side as the lantern means that the state of the adventurer is the same as the state of the lantern).
+\subsection{Function allValidPlays}
+The function \textbf{allValidPlays} is defined as follows:
+\begin{minted}{haskell}
+allValidPlays :: State -> ListDur State
+allValidPlays s = manyChoice (singles ++ pairs)
 
-\section{Conclusion}
-In this report, we have completed the three tasks related to the modelling and analysis of a cyber-physical system using monads.
+      where singles   = [ LD [Duration 
+                          (getTimeAdv a,
+                          mChangeState [Left a, Right ()] s)]
+                        | a <- (advsWithLantern s) ]
 
-Since all the tasks were completed successfully, we can conclude that we have a good understanding of the concepts and techniques related to monads and their application in cyber-physical systems. 
+            pairs     = [ LD [Duration 
+                          (max (getTimeAdv a1) (getTimeAdv a2),
+                          mChangeState [Left a1, Left a2, Right ()] s)]
+                        | (a1, a2) <- makePairs (advsWithLantern s) ]
+\end{minted}
+The function \textbf{allValidPlays} generates all valid moves that the adventurers can make from a given state of the game.
+\\[1em]
+This function starts to generate two lists of moves:
+\begin{itemize}
+\item \textbf{singles} - a list of moves where only one adventurer crosses the bridge.
+\item \textbf{pairs} - a list of moves where two adventurers cross the bridge together.
+\end{itemize}
+
+First, we generate the list \textbf{singles}. We
+consider all adventurers that are on the same side as the lantern,
+obtained by using \texttt{advsWithLantern s}. For each adventurer
+\texttt{a}, we create a possible move where that adventurer crosses
+the bridge alone with the lantern. The time of the move is given by
+\texttt{getTimeAdv a}, which corresponds to the individual crossing time
+of the adventurer. The resulting state is computed using
+\texttt{mChangeState [Left a, Right ()] s}, which updates the position of
+the adventurer and moves the lantern to the opposite side.
+\\[1em]
+This results in a list of \texttt{ListDur State}, where each
+\texttt{ListDur} contains exactly one element representing a
+single-adventurer move.
+Therefore, this list represents all possible and valid single-adventurer
+moves that the adventurers can make in the current state.
+\\[1em]
+Then we generate the list \textbf{pairs}. We consider all possible
+pairs of adventurers that are on the same side as the lantern,
+obtained by using \texttt{makePairs (advsWithLantern s)}. For
+each pair \texttt{(a1, a2)}, we create a possible move where
+both adventurers cross the bridge together with the lantern. The time of
+the move is determined by the slower adventurer, computed as 
+\texttt{max (getTimeAdv a1) (getTimeAdv a2)}, since both must cross at
+the same pace. The resulting state is computed using
+\texttt{mChangeState [Left a1, Left a2, Right ()] s}, which updates the
+position of both adventurers and moves the lantern to the opposite side.
+\\[1em]
+This results in a list of \texttt{ListDur State}, where each \texttt{ListDur}
+contains exactly one element representing a two-adventurer move. Therefore,
+this list represents all possible and valid pair moves that the adventurers
+can make in the current state.
+\\[1em]
+Finally, both lists \textbf{singles} and \textbf{pairs} are combined using
+list concatenation, \texttt{singles ++ pairs}, and the function
+\texttt{manyChoice} is applied to the result.
+\\[1em]
+The function \textbf{manyChoice} takes a list of values of
+type \texttt{ListDur a} and combines them into a single
+\texttt{ListDur a}. Each element in the input list represents an
+independent set of possible computations, each with associated durations.
+The function works by first removing the ListDur constructor from each element
+using \texttt{remLD}, which exposes the underlying lists of \texttt{Duration a}.
+It then concatenates all these lists into a single list using \texttt{concat},
+effectively merging all possible alternatives. Finally, the result is wrapped
+again using the \texttt{LD} constructor to reconstruct the \texttt{ListDur}
+structure.
+\begin{minted}{haskell}
+manyChoice :: [ListDur a] -> ListDur a
+manyChoice = LD . concat . (map remLD)
+\end{minted}
+Functions very similar to manyChoice appear frequently in similar
+exercises because they capture a common pattern in functional programming:
+the need to combine multiple independent monadic computations into a single
+structure representing all possible outcomes. This is especially common in
+problems
+involving non-determinism or search, where multiple alternative results are
+generated and must be unified into a single computation that represents
+\textbf{the full space of possibilities}.
+\\[1em]
+Thus, by combining all independent computations into a single structure,
+we obtain a complete representation of \textbf{all valid moves available from
+the current state}. This ensures that every valid single-adventurer
+and pair-adventurer action is included, allowing the system to fully
+capture the set of all valid moves in the bridge crossing problem.
+\section{Function exec}
+The function \textbf{exec} receives an integer $n$ and an initial state,
+and computes all possible sequences of $n$ moves that the adventurers
+can perform from that state. Each sequence of moves produces a
+corresponding final state together with the total accumulated duration of
+all moves in that sequence, and it is precisely these final states paired
+with their respective durations that are generated by the function.
+\begin{minted}{haskell}
+exec :: Int -> State -> ListDur State
+exec 0 s = return s
+exec n s = do s' <- allValidPlays s
+              exec (n-1) s'
+\end{minted}
+The first line of the function, \texttt{exec 0 s = return s},
+defines \textbf{the base case of the recursion}. When the number of
+remaining moves is 0, no further actions are performed and the
+current state is returned unchanged with zero accumulated duration.
+\\[1em]
+In this context, \texttt{return} wraps a plain value of type \texttt{State}
+into the computational structure \texttt{ListDur State}. In monadic terms,
+it corresponds to the unit operation, which embeds a value into the
+computational context without introducing additional effects or transitions.
+In this context, the state is embedded into the computational context
+without introducing any additional effects, meaning it remains unchanged
+and is associated with a zero duration.
+\begin{minted}{haskell}
+instance Applicative ListDur where
+    pure x = LD [Duration (0,x)]
+    ...
+instance Monad ListDur where
+    return = pure
+    ...
+\end{minted}
+The remainder of the function defines the \textbf{recursive case}.
+\\[1em]
+In the recursive case, \texttt{allValidPlays s} generates a value of type
+\texttt{ListDur State}, containing all possible next states together with their
+associated durations. Through the expression \texttt{s' <- allValidPlays s},
+each generated \texttt{State} is individually passed to the recursive call
+\texttt{exec (n-1) s'}, allowing all possible execution paths to be explored.
+Although the recursion explicitly manipulates only states, the
+associated durations are not lost; they are automatically preserved
+and accumulated by the \texttt{ListDur} monad through the bind operation
+(\texttt{>>=}), which is implicitly used by the \texttt{do} notation.
+\begin{minted}{haskell}
+instance Monad ListDur where
+...
+l >>= k = LD $ do x <- remLD l
+              g x where
+                g(Duration (i,x)) = let u = (remLD (k x))
+                    in map (\(Duration (i',x)) -> Duration (i + i', x)) u
+\end{minted}
+As a result, the function produces a final value of type \texttt{ListDur State},
+containing all reachable states after n moves together with their
+corresponding accumulated durations.
+\section{Function leq17}
+To implement this function, first we introduced an auxiliary function.
+\subsection{Function gFinal}
+The function \textbf{gFinal} represents the goal state of the game,
+where every adventurer has reached the final side. It is defined as a
+constant function (const True). This reflects the fact that, in this state,
+all objects in the game are assumed to be on the final side of the bridge,
+regardless of their identity.
+\begin{minted}{haskell}
+gFinal :: State
+gFinal = const True
+\end{minted}
+This function is the opposite of \textbf{gInit}, which is defined as const False,
+representing the initial state of the game where all objects are assumed
+to be on the starting side of the bridge.
+\begin{minted}{haskell}
+gInit :: State
+gInit = const False
+\end{minted}
+\subsection{Function leq17}
+The function \textbf{leq17} determines whether it is possible for all
+adventurers to reach the other side in at most 17 minutes, without
+exceeding 5 moves. The function takes no input arguments and returns
+a boolean value, indicating whether the condition is satisfied or not.
+\begin{minted}{haskell}
+leq17 :: Bool
+leq17 = any (\(Duration (t,s)) -> s == gFinal && t <= 17)
+  (remLD (manyChoice [exec n gInit | n <- [0..5]]))
+\end{minted}
+The expression \texttt{[exec n gInit | n <- [0..5]]} generates all reachable states
+without exceeding 5 moves, together with their corresponding accumulated durations.
+\\[1em]
+The function \texttt{manyChoice} takes the resulting list of \texttt{ListDur}
+computations and combines them into a single \texttt{ListDur}, collecting all
+possible outcomes into one non-deterministic computation.
+\\[1em]
+The function \texttt{remLD} is then used to extract the underlying list of
+\texttt{Duration State} values from the \texttt{ListDur}
+structure, making the individual results directly accessible.
+\\[1em]
+Finally, \texttt{any} is applied to this list to check whether there exists
+at least one execution for which the final state corresponds to \texttt{gFinal}
+and the total accumulated time does not exceed 17 minutes. If such a
+case exists, the function returns True; otherwise, it returns False.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/leq17.png}
+    \caption{Evaluation of the function \texttt{leq17} in GHCi.}
+\end{figure}
+We evaluated leq17 in GHCi using the Adventurers module, and the
+result returned was \textbf{True}, indicating that it is possible for all
+adventurers to reach the other side in at most 17 minutes,
+without exceeding 5 moves.
+\section{Function l17}
+The function \textbf{l17} determines whether it is possible for all
+adventurers to reach the other side in strictly less than 17 minutes.
+The function takes no input arguments and returns
+a boolean value, indicating whether the condition is satisfied or not.
+\\[1em]
+In this case, we aim to verify this property for any number of moves.
+If we proceeded as before, the function would not terminate in the case where
+the condition is false, since the search space would be infinite. Therefore,
+we need to change our approach. We require auxiliary functions to proceed.
+\subsection{Function reachableDurStates}
+The function \textbf{reachableDurStates} computes all states reachable from an initial state,
+together with the accumulated duration required to reach each state.
+Only states whose accumulated duration is strictly less than the given limit are included.
+\\[1em]
+The function performs a breadth-first exploration of the state space, starting from the initial state
+with duration zero. Each transition is extended only if the resulting accumulated duration does not
+exceed the specified bound and if the resulting state-duration pair has not been visited before.
+\begin{minted}{haskell}
+reachableDurStates :: Int -> State -> ListDur State
+reachableDurStates limit s0 = LD (go [Duration (0, s0)] [(s0, 0)])
+  where
+    go [] _ = []
+
+    go (Duration (t, s) : ws) seen =
+      Duration (t, s) : go (ws ++ newNexts) seen'
+      where
+        nexts = remLD (allValidPlays s)
+
+        newNexts =
+          [ Duration (t + dt, s')
+          | Duration (dt, s') <- nexts
+          , t + dt < limit
+          , notElem (s', t + dt) seen
+          ]
+
+        seen' =
+          map (\(Duration (t', s')) -> (s', t')) newNexts ++ seen
+\end{minted}
+After the definition of the function, the algorithm is implemented through a
+recursive breadth-first search encoded in the auxiliary function \texttt{go}.
+\\[1em]
+The initial call 
+creates the initial search frontier and the visited memory structure:
+\begin{minted}{haskell}
+go [Duration (0, s0)] [(s0, 0)]
+\end{minted}
+The frontier is a list of \texttt{Duration (t, s)} values, where \texttt{t}
+represents the accumulated time and \texttt{s} the current state.
+Initially, the search starts at time zero with the initial state \texttt{s0}.
+\\[1em]
+The second argument, \texttt{seen}, is a list of pairs \texttt{(State, Time)}
+used to record which state-time combinations have already been explored.
+This structure prevents revisiting the same configuration at the same or worse time.
+\\[1em]
+The recursive function \texttt{go} is defined as follows:
+\begin{minted}{haskell}
+go [] _ = []
+\end{minted}
+This base case states that when the frontier becomes empty, the search terminates.
+\\[1em]
+The main recursive step processes the next state in the frontier:
+\begin{minted}{haskell}
+go (Duration (t, s) : ws) seen =
+\end{minted}
+Here, \texttt{Duration (t, s)} represents the current node being expanded,
+while \texttt{ws} is the remaining frontier.
+\\[1em]
+The current state is immediately included in the output:
+\begin{minted}{haskell}
+Duration (t, s) : go (ws ++ newNexts) seen'
+\end{minted}
+This ensures a full traversal of all reachable states in exploration order.
+The frontier is updated by appending newly generated successor states
+(\texttt{newNexts}) to the remaining worklist \texttt{ws}.
+\\[1em]
+Successor states are generated using:
+\begin{minted}{haskell}
+nexts = remLD (allValidPlays s)
+\end{minted}
+The function \texttt{allValidPlays} produces a non-deterministic list of all
+possible transitions from the current state \texttt{s}. The function
+\texttt{remLD} extracts this structure into a standard list of
+\texttt{Duration (dt, s')} values.
+\\[1em]
+New candidate states are then constructed using:
+\begin{minted}{haskell}
+newNexts =
+  [ Duration (t + dt, s')
+  | Duration (dt, s') <- nexts
+  , t + dt < limit
+  , notElem (s', t + dt) seen
+  ]
+\end{minted}
+Each expression plays a specific role:
+\begin{itemize}
+\item \texttt{Duration (dt, s') <- nexts} iterates over all possible transitions
+from the current state.
+\item \texttt{t + dt < limit} enforces the global constraint that only states
+reachable within the time bound are considered.
+\item \texttt{notElem (s', t + dt) seen} ensures that the algorithm does
+not revisit already explored state-time pairs, avoiding redundant exploration
+and infinite loops.
+\item \texttt{Duration (t + dt, s')} constructs the new reachable configuration
+with updated accumulated time.
+\end{itemize}
+The visited structure is updated as follows:
+\begin{minted}{haskell}
+seen' =
+  map (\(Duration (t', s')) -> (s', t')) newNexts ++ seen
+\end{minted}
+This expression extracts the state-time pairs from the newly generated nodes
+and appends them to the previously visited list. The use of \texttt{map}
+converts each \texttt{Duration (t', s')} into the pair \texttt{(s', t')},
+ensuring consistency with the representation used in \texttt{seen}.
+\\[1em]
+Finally, the recursive call:
+\begin{minted}{haskell}
+go (ws ++ newNexts) seen'
+\end{minted}
+continues the exploration by expanding the frontier with newly discovered
+states while carrying forward the updated visited set. The algorithm
+terminates when no further states can be generated within the time limit,
+ensuring that all reachable configurations are explored under the given constraint.
+\subsection{Function l17}
+Again, the function \textbf{l17} determines whether it is possible for all
+adventurers to reach the other side in strictly less than 17 minutes.
+The function takes no input arguments and returns
+a boolean value, indicating whether the condition is satisfied or not.
+\begin{minted}{haskell}
+l17 :: Bool
+l17 = any (\(Duration (t,s)) -> s == gFinal)
+  (remLD (reachableDurStates 17 gInit))
+\end{minted}
+The expression \texttt{reachableDurStates 17 gInit} computes all states
+reachable from the initial state \texttt{gInit} whose accumulated time is
+strictly less than 17 minutes. The result is a \texttt{ListDur State},
+where each element contains a state and the corresponding accumulated time
+required to reach it.
+\\[1em]
+The function \texttt{remLD} is then used to extract the underlying list of
+\texttt{Duration State} values from the \texttt{ListDur} structure, making
+the reachable states directly accessible for further processing.
+\\[1em]
+Finally, the function \texttt{any} is applied to this list to check whether
+there exists at least one reachable configuration in which all adventurers
+have reached the final state \texttt{gFinal} within the given time limit.
+\\[1em]
+If such a state exists, the function returns \texttt{True}, meaning that
+it is possible for all adventurers to cross the bridge in strictly less
+than 17 minutes. Otherwise, it returns \texttt{False}, indicating that no
+valid sequence of moves satisfies the time constraint.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/l17.png}
+    \caption{Evaluation of the function \texttt{l17} in GHCi.}
+\end{figure}
+We evaluated l17 in GHCi using the Adventurers module, and the
+result returned was \textbf{False}, confirming that it is impossible for all
+adventurers to cross the bridge in less than 17 minutes.
+\section{Conclusions}
+We completed the first task as follows:
+\begin{itemize}
+    \item We modeled the system using Haskell, based on monadic structures, in particular the duration and non-deterministic monads. This was achieved by correcting the code and implementing the functions \texttt{getTimeAdv}, \texttt{allValidPlays}, \texttt{exec}, etc.
+    \item We showed that it is possible for all adventurers to reach the other side in at most 17 minutes. Using the function \texttt{leq17}, we showed that there exists a solution achieving this in at most 5 moves. Therefore, we conclude that it is possible.
+    \item We showed that it is impossible for all adventurers to reach the other side in strictly less than 17 minutes, using the function \texttt{l17}.
+\end{itemize}
+\chapter{Second task}
+\section{Function play}
+The function \textbf{play} calculates the resulting state based on which
+adventurers to move next and their probabilistic crossing times. To implement this function, first we introduced an auxiliary function.
+\subsection{Function probTime}
+The function \textbf{probTime} replaces a deterministic crossing time $x$
+with a uniform distribution over three possible crossing times:
+$x - \frac{x}{2}$, $x$, and $x + \frac{x}{2}$.
+\begin{minted}{haskell}
+probTime :: Int -> Dist Int
+probTime x = uniform [x - x `div` 2, x, x + x `div` 2]
+\end{minted}
+A uniform distribution assumes that all values are equally likely to occur,
+so in this case each crossing time has probability $\frac{1}{3}$.
+This introduces uncertainty into the model by allowing the crossing
+time to vary around its original value.
+\subsection{Function play}
+The function \textbf{play} calculates the resulting state based on which adventurers to move next
+and their probabilistic crossing times.
+\begin{minted}[fontsize=\small]{haskell}
+play :: Move -> State -> DistDur State
+play (Left a) s =
+  DD (do t <- probTime (getTimeAdv a)
+         return (Duration (t, mChangeState [Left a, Right ()] s)))
+play (Right (a1, a2)) s =
+  DD (do t1 <- probTime (getTimeAdv a1)
+         t2 <- probTime (getTimeAdv a2)
+         return (Duration (max t1 t2, mChangeState [Left a1, Left a2, Right ()] s)))
+\end{minted}
+The function play takes a \texttt{Move} and the current \texttt{State}
+as input and returns a \texttt{DistDur State}, representing a
+probability distribution of crossing times associated with the
+single resulting state.
+\\[1em]
+The function play can take two different types of \texttt{Move}:
+either a single adventurer moving (\texttt{Left a}) or a pair of adventurers
+moving together (\texttt{Right (a1, a2)}).
+\\[1em]
+When the function receives \texttt{Left a}, it represents a move where a
+single adventurer crosses. The function first obtains the adventurer's
+deterministic crossing-time using \texttt{getTimeAdv a}. Then, it applies
+the \texttt{probTime} function to this value, resulting in a distribution of
+possible crossing times for that adventurer. For every possible crossing time
+\texttt{t} generated by the distribution, the function constructs a
+\texttt{Duration} value that pairs this time \texttt{t} with the
+resulting state after the move, computed using
+\texttt{mChangeState [Left a, Right ()] s}. Then it wraps this
+in a \texttt{return} to lift it into the \texttt{Dist} monad, and finally
+wraps the entire computation in \texttt{DD} to produce a \texttt{DistDur State}.
+\\[1em]
+When the function receives \texttt{Right (a1, a2)}, it represents a move
+where two adventurers cross together. The function first obtains the
+deterministic crossing times for both adventurers using
+\texttt{getTimeAdv a1} and \texttt{getTimeAdv a2}. Then, it applies
+the \texttt{probTime} function to each of these values, resulting in
+two distributions of possible crossing times. For every possible pair of
+crossing times \texttt{t1} and \texttt{t2} generated by these distributions,
+the function constructs a \texttt{Duration} value that pairs the maximum of
+these two times \texttt{max t1 t2} (since both adventurers must cross
+together at the pace of the slower one), with the resulting state
+after the move, computed using
+\texttt{mChangeState [Left a1, Left a2, Right ()] s}. Then it wraps this
+in a \texttt{return} to lift it into the \texttt{Dist} monad, and finally
+wraps the entire computation in \texttt{DD} to produce a \texttt{DistDur State}.
+\\[1em]
+This function effectively returns a probability distribution
+of the crossing times for the given move,
+along with the resulting state after performing that move.
+\subsection {Ord State}
+However, when executing play with valid arguments, the program produces a
+runtime error when attempting to display the result in the terminal.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/error.png}
+    \caption{Runtime error encountered during execution of play.}
+\end{figure}
+This occurs because printing a value of type DistDur State requires
+converting a probabilistic distribution into a human-readable form.
+The Show instance for distributions performs normalization, which involves
+sorting the elements of the distribution. This sorting requires an Ord
+instance for the underlying type. Since State is defined as a function
+(Objects -> Bool), it does not admit an Ord instance in Haskell, leading
+to the error.
+\\[1em]
+We solved this issue by manually defining an Ord State instance based on
+the string representation of states:
+\begin{minted}{haskell}
+instance Ord State where
+  compare s1 s2 = compare (show s1) (show s2)
+\end{minted}
+This works by converting each state (a function) into a String using show, and then comparing these strings lexicographically. This allows the distribution to be printed without requiring a true semantic ordering on functions. However, this ordering is only used for display purposes and does not represent a meaningful ordering of states.
+\\[1em]
+After this change, the function works correctly.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/play.png}
+    \caption{Evaluation of the function \texttt{play} in GHCi with sample arguments.}
+\end{figure}
+\section{Function plays}
+The function \textbf{plays} extends the previous function (function
+\texttt{play}) to lists of movements. It receives a list of moves
+and an initial state, and computes the list of moves sequentially,
+starting from the initial state. Each sequence of moves produces a
+\texttt{DistDur State}.
+\begin{minted}{haskell}
+plays :: [Move] -> State -> DistDur State 
+plays []     s = return s
+plays (m:ms) s = do s' <- play m s
+                    plays ms s'
+\end{minted}
+The first line of the function, \texttt{plays [] s = return s},
+defines \textbf{the base case of the recursion}. When the list of moves
+is empty, no further actions are performed and the current state is
+returned unchanged without introducing additional effects or transitions.
+In this context, \texttt{return} wraps a plain value of type \texttt{State}
+into the computational structure \texttt{DistDur State}. In monadic terms,
+it corresponds to the unit operation, which embeds a value into the
+computational context without introducing additional effects or transitions.
+\\[1em]
+The remainder of the function defines the \textbf{recursive case}.
+In each recursive step, the function takes the first move \texttt{m}
+from the list \texttt{(m:ms)} together with the current state \texttt{s}.
+The expression \texttt{play m s} executes that move and produces
+a value of type \texttt{DistDur State}, representing a distribution of
+possible resulting states. Each resulting state is associated not only with
+a duration, but also with a probability that reflects the likelihood of
+that transition occurring.
+Using the binding expression \texttt{s' <- play m s}, the computation
+conceptually iterates over every possible state produced by the
+distribution and passes each one to the recursive call \texttt{plays ms s'}.
+Thus, the remaining sequence of moves \texttt{ms} is executed independently
+for every possible intermediate state generated after the first move.
+This recursive structure allows the computation to explore
+all possible execution paths of the sequence of moves.
+Although the recursion explicitly manipulates only values
+of type State, both the probabilities and the durations
+associated with each transition are automatically preserved and
+combined by the \texttt{DistDur} monad through the bind operation
+\texttt{(>>=)}, which is implicitly used by the do notation.
+During this process, probabilities are propagated and combined along
+the different execution paths, while durations are accumulated across
+consecutive moves.
+\\[1em]
+As a result, the final value produced by plays represents a
+complete distribution over all reachable final states after
+executing the entire list of moves, together with the probability and
+total duration associated with each possible execution path.
+\\[1em]
+The \textbf{strong similarity} between the function \texttt{plays} and the function
+\texttt{exec} from the previous task highlights \textbf{one of the main advantages
+of monads}: they provide a uniform structure for sequencing recursive
+computations while abstracting the management of computational effects.
+Although the two functions operate over \textbf{different monads} and model
+different behaviors — probabilistic distributions in \texttt{DistDur} and
+nondeterministic exploration in \texttt{ListDur} — their \textbf{recursive logic
+remains essentially identical} because the propagation of probabilities,
+branching, and duration accumulation are handled automatically by
+the monadic bind operation.
+\section{Conclusions}
+In the second task, we implemented all the required functions.
+It now remains to answer the following question:
+\\[1em]
+In this probabilistic setting, what can you conclude about the
+adventurer’s claims mentioned above?
+\\[1em]
+One adventurer claims that they \textbf{cannot be all on the other
+side in less than 19 minutes}. Another
+one disagrees and claims that it \textbf{can be done in 17 minutes}.
+\\[1em]
+To answer this question, we implemented an auxiliary function.
+\subsection{Function distExample}
+The function \textbf{distExample} returns one distribution over all
+reachable final states after executing one specific list of moves,
+together with the probability
+and total duration associated with each possible execution path (since we use the
+function \texttt{plays}).The chosen sequence of moves corresponds to an
+optimal solution that was easily found online,
+namely: moving P1 and P2 forward, moving P1 back, moving P5 and P10 forward,
+moving P2 back, and finally moving P1 and P2 forward. The initial
+state is the initial state of the game (\texttt{gInit}).
+\begin{minted}{haskell}
+distExample :: DistDur State
+distExample = plays
+[Right (P1,P2), Left P1, Right (P5,P10), Left P2, Right (P1,P2)] gInit
+\end{minted}
+\subsection{Interpretation of the results}
+Running \textbf{distExample} yields the following distribution:
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/distExample.png}
+    \caption{Evaluation of the function \texttt{distExample} in GHCi.}
+\end{figure}
+From the obtained distribution, we observe that all execution paths reach the final state where all adventurers are on the other side. However, the total duration varies across different executions due to the probabilistic nature of the model.
+\\[1em]
+Importantly, the results show that there exist valid execution paths with a total duration of 17 minutes. This means that completing the task in 17 minutes is possible, but not guaranteed in every execution.
+\\[1em]
+On the other hand, we also observe executions with durations both below and above 19 minutes. This implies that the statement claiming that it is impossible to complete the task in less than 19 minutes is incorrect, since there are valid paths with smaller durations.
+\\[1em]
+It is also worth noting that in this probabilistic setting, it is even possible—if we are “lucky” in the chosen transitions—for the task to be completed in less than 17 minutes. This contrasts with the model studied previously, where such a result was impossible.
+\\[1em]
+Therefore, in this probabilistic setting, \textbf{the first adventurer’s claim is false}, since there exist valid execution paths where the task is completed in less than 19 minutes.
+\\[1em]
+\textbf{The second adventurer’s claim is true}, because there are execution paths in which the task can be completed in 17 minutes.
+However, \textbf{although this is possible, it is not guaranteed that the execution will always take 17 minutes for the given sequence of moves, due to the probabilistic nature of the model}.
+\chapter{Third task}
+In the third task, we were asked to add new functionalities to the code
+which we found essential or interesting.
+\\[1em]
+I think it is interesting to implement an interactive game using
+the IO monad, where the user can choose the moves to perform and see the
+resulting state and duration after each move. This would allow us to
+explore the system in a more dynamic way and understand how different
+sequences of moves lead to different outcomes. I also think it
+would be fun to play the game and try to find the optimal sequence
+of moves to reach the goal state in the shortest time possible.
+\\[1em]
+I think it is also essential to see the sequence of states respective
+to the movements of the
+adventurers from the initial state to the final goal. Without it,
+we can only observe the
+final state and the total duration, but not how each
+state was reached. By inspecting the
+full sequence of intermediate states, we can understand the
+role of each move, trace back
+the reasoning behind a given solution, confirm that the constraints of
+the problem are
+respected at every step, and most importantly know exactly which
+moves to perform and
+in what order — which is ultimately what it means to actually solve the problem.
+Observing the sequence of moves that lead to each
+pair of final state and duration is particularly important, as it allows
+us to understand how each state is reached and how different durations can
+be achieved.
+\\[1em]
+In the following sections, I will briefly describe how these
+functionalities were implemented and what they consist of.
+\section{Interactive Game Using the IO Monad}
+
+The game is implemented using the \texttt{IO} monad to handle all input and output operations. This allows the program to interact with the player while maintaining a clear separation between pure game logic and side effects such as reading input or printing to the screen.
+
+The game follows a recursive loop structure, where each iteration displays the current state, processes user input, and updates the game accordingly until a terminal condition is reached (either success or failure).
+
+\subsection{Function game}
+
+The \texttt{game} function starts the execution of the program by calling the main game loop with the initial configuration.
+
+\begin{minted}{haskell}
+game :: IO ()
+game = do
+  gameLoop (Duration (0, gInit))
+\end{minted}
+
+This function initializes the game state wrapped inside the \texttt{Duration} type, which stores both the current state of the game and the elapsed time. From this point onward, control is delegated entirely to the \texttt{gameLoop} function.
+
+\subsection{Function gameLoop}
+
+The \texttt{gameLoop} function is the core of the game execution. It is responsible for rendering the current state, checking termination conditions, and generating available moves.
+
+\begin{minted}[fontsize=\small]{haskell}
+gameLoop :: Duration State -> IO ()
+gameLoop ds@(Duration (t,s)) = do
+  putStr "\ESC[2J\ESC[1H"
+  putStrLn ""
+  putStrLn "  \ESC[35mBridge and Torch Game\ESC[0m — Save everyone in 17 minutes or less"
+  drawDurationState ds
+  if s == gFinal
+    then do
+      if t <= 17
+        then do
+          putStrLn "  Mission: \ESC[32mCOMPLETED\ESC[0m -- you won!"
+        else do
+          putStrLn "  Mission: \ESC[31mFAILED\ESC[0m -- try again!"
+      pickChoice ds []
+    else do
+      let available = advsWithLantern s
+          singles   = map Left available
+          pairs     = map (\(a1,a2) -> Right (a1,a2)) (makePairs available)
+          moves     = singles ++ pairs
+      putStrLn "  Mission: IN PROGRESS"
+      pickChoice ds moves
+\end{minted}
+
+This function determines whether the game has reached its final state. If all adventurers have successfully crossed the bridge, the game evaluates the total time and declares the result as either a success or failure. Otherwise, it computes the list of valid moves and continues the game.
+
+\subsection{Function pickChoice}
+
+The \texttt{pickChoice} function handles user interaction by displaying all available moves and processing the player's selection.
+
+\begin{minted}{haskell}
+pickChoice :: Duration State -> [Move] -> IO ()
+pickChoice ds moves = do
+  putStrLn ""
+  putStrLn "  Available choices:"
+
+  mapM_ (\(i,m) ->
+    putStrLn $ "  " ++ show i ++ ") " ++ showMove m
+    ) (zip [1..] moves)
+
+  let restartChoiceNum = length moves + 1
+      quitChoiceNum    = length moves + 2
+
+  putStrLn $ "  " ++ show restartChoiceNum ++ ") [RESTART GAME]"
+  putStrLn $ "  " ++ show quitChoiceNum ++ ") [QUIT GAME]"
+
+  putStrLn ""
+  putStr "  Choice: "
+  line <- getLine
+
+  case reads line of
+    [(n,"")] | n >= 1 && n <= length moves ->
+      gameLoop (applyMove (moves !! (n-1)) ds)
+
+    [(n,"")] | n == restartChoiceNum ->
+      gameLoop (Duration (0, gInit))
+
+    [(n,"")] | n == quitChoiceNum ->
+      putStr "\ESC[2J\ESC[1H"
+
+    _ -> gameLoop ds
+\end{minted}
+
+This function presents the player with all possible actions, including normal moves, restarting the game, or quitting. It then reads the player's input and updates the game state accordingly.
+
+\subsection{Function showMove}
+
+The \texttt{showMove} function is responsible for converting a move into a human-readable string representation, including the time cost of each action.
+
+\begin{minted}{haskell}
+showMove :: Move -> String
+showMove (Left a) =
+  show a ++ " [" ++ show (getTimeAdv a) ++ " min]"
+showMove (Right (a1,a2)) =
+  show a1 ++ " + " ++ show a2 ++ " [" ++
+  show (max (getTimeAdv a1) (getTimeAdv a2)) ++ " min]"
+\end{minted}
+
+\subsection{Function applyMove}
+
+The \texttt{applyMove} function applies a selected move to the current game state while updating the elapsed time accordingly.
+
+\begin{minted}{haskell}
+applyMove :: Move -> Duration State -> Duration State
+applyMove (Left a) (Duration (t,s)) =
+  Duration ((getTimeAdv a) + t,
+  mChangeState [Left a, Right ()] s)
+applyMove (Right (a1,a2)) (Duration (t,s)) =
+  Duration ((max (getTimeAdv a1) (getTimeAdv a2)) + t,
+  mChangeState [Left a1, Left a2, Right ()] s)
+\end{minted}
+
+This function encapsulates both the state transition and the time accumulation caused by each move.
+
+\subsection{Function drawDurationState}
+
+The \texttt{drawDurationState} function renders the full game state, including the positions of all characters and the elapsed time.
+
+\begin{minted}[fontsize=\small]{haskell}
+drawDurationState :: Duration State -> IO ()
+drawDurationState (Duration (t,s)) = do
+  putStrLn ""
+  putStrLn   "  -----not saved---------------bridge---------------saved-----"
+  putStrLn ""                             
+  putStrLn $ "  " ++ drawLeftSide s ++ "  -----------------------  " ++ drawRightSide s
+  putStrLn ""
+  putStrLn $ "  " ++ drawTimerBar t
+  putStrLn ""
+\end{minted}
+The bridge is represented using dashes (- -) due to limitations in LaTeX regarding custom symbol rendering.
+\subsection{Function drawLeftSide}
+
+The \texttt{drawLeftSide} function displays the state of the left side of the bridge, including the torch and adventurers still waiting to cross.
+
+\begin{minted}{haskell}
+drawLeftSide :: State -> String
+drawLeftSide s =
+  let torch = if not (s (Right())) then "* " else "   "
+      p1  = if not (s (Left P1))  then "P1 "  else "   "
+      p2  = if not (s (Left P2))  then "P2 "  else "   "
+      p5  = if not (s (Left P5))  then "P5 "  else "   "
+      p10 = if not (s (Left P10)) then "P10 " else "    "
+  in  torch ++ p1 ++ p2 ++ p5 ++ p10
+\end{minted}
+The symbol * is used to represent the light bulb emoji, as it could not be reliably rendered in LaTeX.
+\subsection{Function drawRightSide}
+
+The \texttt{drawRightSide} function displays the state of the right side of the bridge.
+
+\begin{minted}{haskell}
+drawRightSide :: State -> String
+drawRightSide s =
+  let torch = if s (Right ()) then "* " else "   "
+      p1  = if s (Left P1)  then "P1 "  else "   "
+      p2  = if s (Left P2)  then "P2 "  else "   "
+      p5  = if s (Left P5)  then "P5 "  else "   "
+      p10 = if s (Left P10) then "P10 " else "    "
+  in  torch ++ p1 ++ p2 ++ p5 ++ p10
+\end{minted}
+The symbol * is used to represent the light bulb emoji, as it could not be reliably rendered in LaTeX.
+\subsection{Function drawTimerBar}
+
+The \texttt{drawTimerBar} function visualizes the elapsed time and provides a simple progress indicator for the 17-minute constraint.
+
+\begin{minted}{haskell}
+drawTimerBar :: Int -> String
+drawTimerBar t = 
+  let barLength = min t 17
+      dotsLength = 17 - barLength
+      status = if t > 17 
+                 then " OVER 17!"
+                 else " 17 min"
+  in show t ++ " min " ++ replicate barLength '='
+  ++ replicate dotsLength '.' ++ status
+\end{minted}
+
+This function provides a visual representation of time progression, helping the player track performance relative to the optimal solution.
+\subsection{Running the Game}
+To run the game, open GHCi with the command \texttt{ghci Adventure.hs} and then execute the function \texttt{game}. The game will start immediately. Players then interact with the game by entering numeric choices to make decisions at each step.
+\subsection{Gameplay Examples}
+Below are two example runs of the game illustrating how the player interacts with the system and how decisions affect the game state.
+\subsubsection{Gameplay 1}
+This gameplay demonstrates a successful completion of the game, where the player wins by saving everyone within the 17-minute limit.
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay1/1.png}
+  \end{figure}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay1/2.png}
+  \end{figure}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay1/3.png}
+  \end{figure}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay1/4.png}
+  \end{figure}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay1/5.png}
+  \end{figure}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay1/6.png}
+\end{figure}
+\subsubsection{Gameplay 2}
+This gameplay demonstrates an unsuccessful attempt, where the player fails to save everyone within the 17-minute limit and loses the game.
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay2/1.png}
+  \end{figure}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay2/2.png}
+  \end{figure}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay2/3.png}
+  \end{figure}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay2/4.png}
+  \end{figure}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay2/5.png}
+  \end{figure}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/gameplay2/6.png}
+\end{figure}
+\section{State Sequence of Adventurers' Movements}
+\subsection{Monad ListDurLog}
+To support the state sequence functionality, we introduced a new monad, \texttt{ListDurLog},
+which extends \texttt{ListDur} by attaching a log of intermediate states to each branch
+of the computation. Each branch is a \texttt{Duration} wrapping a pair
+\texttt{([State], a)}, where \texttt{[State]} accumulates the sequence of states visited
+along that branch, \texttt{a} is the current computed value, and the \texttt{Duration}
+records the total elapsed time.
+\\[1em]
+The \texttt{pure} operation embeds a value with zero elapsed time and an empty log,
+reflecting a computation that has not yet performed any move. The bind operator
+(\texttt{>>=}) sequences two computations by concatenating their logs
+(\texttt{log1 ++ log2}) and summing their durations (\texttt{t + t'}), so the full
+history of intermediate states is built up automatically as the computation progresses,
+without any explicit bookkeeping at the call sites. \texttt{manyLDLChoice} merges the
+branches of multiple \texttt{ListDurLog} computations into a single one, in direct
+analogy with \texttt{manyChoice} from \texttt{ListDur}.
+\\[1em]
+This design is inspired by the \texttt{LogList} monad from the Knight's Quest exercise.
+\begin{minted}{haskell}
+data ListDurLog a = LDL [Duration ([State], a)] deriving Show
+
+remLDL :: ListDurLog a -> [Duration ([State], a)]
+remLDL (LDL x) = x
+
+instance Functor ListDurLog where
+  fmap f = LDL . map (fmap (\(log, x) -> (log, f x))) . remLDL
+
+instance Applicative ListDurLog where
+  pure x = LDL [Duration (0, ([], x))]
+  l1 <*> l2 = LDL $ do
+    x <- remLDL l1
+    y <- remLDL l2
+    return $ do (log1, f) <- x; (log2, a) <- y; return (log1 ++ log2, f a)
+
+instance Monad ListDurLog where
+  return = pure
+  l >>= k = LDL $ do
+    Duration (t, (log1, x)) <- remLDL l
+    Duration (t', (log2, y)) <- remLDL (k x)
+    return $ Duration (t + t', (log1 ++ log2, y))
+
+manyLDLChoice :: [ListDurLog a] -> ListDurLog a
+manyLDLChoice = LDL . concatMap remLDL
+\end{minted}
+\subsection{Function playLog}
+The function \texttt{playLog} mirrors the function \texttt{play} from the second task
+but returns a \texttt{ListDurLog State} instead of a \texttt{ListDur State}, recording
+the resulting state of each move in the log.
+\\[1em]
+For a single-adventurer move (\texttt{Left a}), the function constructs a branch
+with the crossing time of \texttt{a} as the duration, and stores the resulting state
+both as the log entry and as the current value. For a two-adventurer move
+(\texttt{Right (a1, a2)}), the duration is the maximum of the two crossing times
+(since they must cross together at the pace of the slower one), and the resulting
+state after both adventurers and the lantern have moved is logged in the same way.
+In both cases, wrapping the result in \texttt{LDL} produces a \texttt{ListDurLog State}
+with a single branch, which \texttt{playsLog} and \texttt{allValidPlaysLog} then compose
+using the monadic bind.
+\begin{minted}{haskell}
+playLog :: Move -> State -> ListDurLog State
+playLog (Left a) s =
+  LDL [Duration (getTimeAdv a,
+  ([mChangeState [Left a, Right ()] s],
+  mChangeState [Left a, Right ()] s))]
+playLog (Right (a1, a2)) s =
+  LDL [Duration (max (getTimeAdv a1) (getTimeAdv a2),
+  ([mChangeState [Left a1, Left a2, Right ()] s],
+  mChangeState [Left a1, Left a2, Right ()] s))]
+\end{minted}
+\subsection{Function playsLog}
+The function \texttt{playsLog} sequences a list of moves by chaining \texttt{playLog}
+calls through the monadic bind operator. At each step, the bind accumulates the log
+of visited states and sums the elapsed durations automatically, so neither needs to be
+managed explicitly.
+\\[1em]
+The base case returns the current state wrapped in \texttt{return}, which produces an
+empty log and zero elapsed time. The initial state is intentionally not included in the
+log here; it is prepended separately at the display level (in \texttt{showPlaysLog} and
+\texttt{showPlaysLog2}) to avoid duplicating it at the concatenation points between
+consecutive moves.
+\begin{minted}{haskell}
+playsLog :: [Move] -> State -> ListDurLog State
+playsLog []     s = return s
+playsLog (m:ms) s = do s' <- playLog m s
+                       playsLog ms s'
+\end{minted}
+\subsection{Function diffStates}
+The function \texttt{diffStates} computes the list of adventurers whose
+positions differ between two given states. It takes two states \texttt{s1}
+and \texttt{s2} as input and returns the list of adventurers that are on
+different sides of the bridge in each state.
+\begin{minted}{haskell}
+diffStates :: State -> State -> [Adventurer]
+diffStates s1 s2 = filter(\a -> s1 (Left a) /= s2 (Left a)) [P1, P2, P5, P10]
+\end{minted}
+The function filters the list of all adventurers, keeping only those whose
+position differs between the two
+states. Since consecutive states in a sequence differ precisely in the
+adventurers that crossed during the intervening move, \texttt{diffStates}
+effectively identifies who crossed the bridge at each step. This makes it
+a key auxiliary function for reconstructing and displaying the sequence of
+moves from a list of states.
+\subsection{Function crossTime}
+The function \texttt{crossTime} computes the time elapsed during the
+transition between two consecutive states. It takes two states \texttt{s1}
+and \texttt{s2} as input and returns the crossing time of that step as an integer.
+\begin{minted}{haskell}
+crossTime :: State -> State -> Int
+crossTime s1 s2 =
+  maximum [ getTimeAdv a | a <- diffStates s1 s2 ]
+\end{minted}
+The function first uses \texttt{diffStates s1 s2} to identify which
+adventurers moved between the two states. It then retrieves the crossing
+time of each of those adventurers using \texttt{getTimeAdv} and takes
+the maximum. This correctly models the constraint that when multiple
+adventurers cross together, the total time is determined by the slowest one.
+The result is used during display to accumulate and show the correct
+elapsed time at each step.
+\subsection{Function showMove'}
+The function \texttt{showMove'} produces a human-readable description
+of the transition between two consecutive states. It takes two states
+\texttt{s1} and \texttt{s2} as input and returns a string describing
+the move that occurred.
+\begin{minted}{haskell}
+showMove' :: State -> State -> String
+showMove' s1 s2 = show (diffStates s1 s2) ++ " " ++ dir
+  where dir = if s2 (Right ()) then "cross" else "cross back"
+\end{minted}
+The function uses \texttt{diffStates s1 s2} to determine which
+adventurers moved, then checks the lantern's position in the resulting
+state \texttt{s2} to determine the direction of travel: if
+\texttt{s2 (Right ())} is \texttt{True}, the lantern moved to the far
+side, meaning the adventurers crossed forward; otherwise they returned.
+The result is a readable string such as \texttt{[P1,P2] cross} or
+\texttt{[P1] cross back}, making the solution trace easy to follow.
+\subsection{Function showPlaysLog}
+The function \texttt{showPlaysLog} takes a list of moves and an initial
+state and prints the full sequence of states and transitions to the
+terminal in a textual format.
+\begin{minted}{haskell}
+showPlaysLog :: [Move] -> State -> IO ()
+showPlaysLog ms s0 =
+  case remLDL (playsLog ms s0) of
+    [] -> putStrLn "No result."
+    (Duration (t, (steps, _)):_) ->
+      putStr $ unlines $
+        [""] ++ showSteps 0 (s0 : steps) ++ [""]
+  where
+    showSteps :: Int -> [State] -> [String]
+    showSteps _ []  = []
+    showSteps t [s] = [show t ++ " min  " ++ show s]
+    showSteps t (s1:s2:rest) =
+      [ show t ++ " min  " ++ show s1
+      , showMove' s1 s2]
+      ++ showSteps (t + crossTime s1 s2) (s2:rest)
+\end{minted}
+The function first runs \texttt{playsLog ms s0} to obtain the logged
+sequence of states, then extracts the first result using
+\texttt{remLDL}. The auxiliary function \texttt{showSteps} recursively
+walks the list of states, printing the elapsed time and state at each
+step, interleaved with a description of the move that caused each
+transition (using \texttt{showMove'}). The accumulated time is updated
+at each step using \texttt{crossTime}. This produces a readable,
+step-by-step trace of the entire solution.
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\textwidth]{figures/showPlaysLog.png}
+  \caption{Example execution of `showPlaysLog` for a valid move sequence and for a valid initial state.}
+\end{figure}
+\subsection{Function showPlaysLog2}
+The function \texttt{showPlaysLog2} is a variant of \texttt{showPlaysLog}
+that renders the same information using the graphical
+\texttt{drawDurationState} function instead of plain text output.
+\begin{minted}{haskell}
+showPlaysLog2 :: [Move] -> State -> IO ()
+showPlaysLog2 ms s0 =
+  case remLDL (playsLog ms s0) of
+    [] -> putStrLn "No result."
+    (Duration (t, (steps, _)):_) -> drawSteps 0 (s0 : steps)
+  where
+    drawSteps :: Int -> [State] -> IO ()
+    drawSteps _ []  = return ()
+    drawSteps t [s] = drawDurationState (Duration (t, s))
+    drawSteps t (s1:s2:rest) = do
+      drawDurationState (Duration (t, s1))
+      putStrLn $ "      \ESC[35m" ++ showMove' s1 s2 ++ "\ESC[0m"
+      drawSteps (t + crossTime s1 s2) (s2:rest)
+\end{minted}
+Like \texttt{showPlaysLog}, it reconstructs the trace from the logged
+states returned by \texttt{playsLog}. However, instead of printing
+the state as a raw string, it calls \texttt{drawDurationState} to render
+the visual bridge representation at each step. The move description
+between consecutive states is printed in purple using ANSI escape
+codes for visual clarity. This provides a richer and more intuitive
+view of the solution sequence.
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\textwidth]{figures/showPlaysLog2.png}
+  \caption{Example execution of `showPlaysLog2` for a valid move sequence and for a valid initial state.}
+\end{figure}
+\subsection{Function allValidPlaysLog}
+The function \texttt{allValidPlaysLog} mirrors \texttt{allValidPlays}
+from the first task but operates over the \texttt{ListDurLog} monad,
+logging the resulting state of each move into the accumulated history.
+\begin{minted}{haskell}
+allValidPlaysLog :: State -> ListDurLog State
+allValidPlaysLog s = manyLDLChoice (singles ++ pairs)
+
+  where singles = [ LDL [Duration
+                    (getTimeAdv a,
+                    ([mChangeState [Left a, Right ()] s ],
+                    mChangeState [Left a, Right ()] s ))]
+                    | a <- (advsWithLantern s)]
+
+        pairs   = [ LDL [Duration
+                    (max (getTimeAdv a1) (getTimeAdv a2),
+                    ([mChangeState [Left a1, Left a2, Right ()] s ],
+                    mChangeState [Left a1, Left a2, Right ()] s ))]
+                  | (a1, a2) <- makePairs (advsWithLantern s)]
+\end{minted}
+As in \texttt{allValidPlays}, the function generates all single-adventurer
+and pair moves available from state \texttt{s}, using
+\texttt{advsWithLantern} to determine who can cross. The key difference
+is that each branch is now wrapped in the \texttt{LDL} constructor and
+includes the resulting state both as the log entry (the singleton list
+\texttt{[mChangeState ...]}) and as the current value. The function
+\texttt{manyLDLChoice} then merges all branches into a single
+\texttt{ListDurLog State}, representing all valid next moves with their
+durations and logged states.
+\subsection{Function execLog}
+The function \texttt{execLog} extends \texttt{exec} from the first task
+to the \texttt{ListDurLog} monad, computing all possible sequences of
+exactly $n$ moves from a given initial state while accumulating the full
+sequence of intermediate states.
+\begin{minted}{haskell}
+execLog :: Int -> State -> ListDurLog State
+execLog 0 s = return s
+execLog n s = do s' <- allValidPlaysLog s
+                 execLog (n-1) s'
+\end{minted}
+The structure is identical to \texttt{exec}: the base case wraps the
+current state in the monad with zero duration and an empty log, while
+the recursive case uses \texttt{allValidPlaysLog} to generate all valid
+next states and chains them through \texttt{execLog (n-1)}. The bind
+operation of \texttt{ListDurLog} automatically accumulates both the
+total duration and the log of visited states across all recursive calls,
+so the final result contains, for each possible execution path, the full
+history of states alongside the total elapsed time.
+\subsection{Function bestPaths}
+The function \texttt{bestPaths} collects all optimal solution paths:
+sequences of states that start at \texttt{gInit}, end at \texttt{gFinal},
+and complete within 17 minutes, explored up to a given maximum number of moves.
+\begin{minted}{haskell}
+bestPaths :: Int -> [[State]]
+bestPaths maxMoves =
+  [ log
+  | n <- [0..maxMoves]
+  , Duration (t, (log, s)) <- remLDL (execLog n gInit)
+  , s == gFinal
+  , t <= 17
+  ]
+\end{minted}
+The function iterates over all move counts from 0 to \texttt{maxMoves}
+and runs \texttt{execLog n gInit} for each, extracting the logged
+branches via \texttt{remLDL}. Each branch contains the total elapsed
+time \texttt{t}, the accumulated state history \texttt{log}, and the
+final state \texttt{s}. Only branches where the final state equals
+\texttt{gFinal} and the total time does not exceed 17 minutes are kept.
+The result is a list of state sequences, each representing a valid and
+optimal path through the bridge-crossing problem.
+\subsection{Function statesToMoves}
+The function \texttt{statesToMoves} reconstructs the list of moves
+that produced a given sequence of states. It takes a list of states
+and returns the corresponding list of \texttt{Move} values.
+\begin{minted}{haskell}
+statesToMoves :: [State] -> [Move]
+statesToMoves []  = []
+statesToMoves [_] = []
+statesToMoves (s1:s2:rest) =
+  case diffStates s1 s2 of
+    [a]     -> Left a : statesToMoves (s2:rest)
+    [a1,a2] -> Right (a1,a2) : statesToMoves (s2:rest)
+    _       -> statesToMoves (s2:rest)
+\end{minted}
+The function processes consecutive pairs of states: for each pair
+\texttt{(s1, s2)}, it uses \texttt{diffStates} to determine which
+adventurers moved. If exactly one adventurer changed side, the move is
+a single crossing (\texttt{Left a}); if two adventurers changed side,
+the move is a pair crossing (\texttt{Right (a1, a2)}). Any other case
+is skipped. This function bridges the gap between the state-sequence
+representation produced by \texttt{bestPaths} and the move-list
+representation expected by \texttt{showPlaysLog} and
+\texttt{showPlaysLog2}.
+\subsection{Function printBestPath}
+The function \texttt{printBestPath} prints the first optimal solution
+found by \texttt{bestPaths} as a textual step-by-step trace.
+\begin{minted}{haskell}
+printBestPath :: IO ()
+printBestPath = showPlaysLog (statesToMoves (gInit: (head (bestPaths 5)))) gInit
+\end{minted}
+It calls \texttt{bestPaths 5} to retrieve all valid solutions within
+5 moves and 17 minutes, selects the first one with \texttt{head}, and
+prepends \texttt{gInit} to reconstruct the full state sequence starting
+from the initial configuration. It then uses \texttt{statesToMoves}
+to convert this sequence into a move list, which is passed to
+\texttt{showPlaysLog} together with the initial state to render the
+complete trace in plain text.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/printBestPath.png}
+    \caption{Evaluation of the function \texttt{printBestPath} in GHCi.}
+\end{figure}
+\subsection{Function printBestPath2}
+The function \texttt{printBestPath2} serves the same purpose as
+\texttt{printBestPath}, but renders the solution using the graphical
+display provided by \texttt{showPlaysLog2}.
+\begin{minted}{haskell}
+printBestPath2 :: IO ()
+printBestPath2 = showPlaysLog2 (statesToMoves (gInit: (head (bestPaths 5)))) gInit
+\end{minted}
+It follows exactly the same logic as \texttt{printBestPath} — selecting
+the first optimal path from \texttt{bestPaths 5}, reconstructing the
+move list via \texttt{statesToMoves}, and passing it to the display
+function — but delegates rendering to \texttt{showPlaysLog2}, which
+draws the bridge diagram at each step with ANSI colors. This makes the
+solution trace visually consistent with the interactive game interface.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/printBestPath2.png}
+    \caption{Evaluation of the function \texttt{printBestPath2} in GHCi.}
+\end{figure}
+\section{Conclusions}
+In this task, we implemented two independent functionalities that we considered both
+useful and interesting extensions to the base assignment.
+\\[1em]
+The interactive game using the \texttt{IO} monad provides a hands-on way to explore
+the bridge-crossing problem. Rather than inspecting raw output from functions like
+\texttt{exec} or \texttt{leq17}, the player can make decisions step by step and
+directly observe how each choice affects the remaining time and the positions of the
+adventurers. The game also provides immediate feedback on success or failure, making
+it clear whether the chosen sequence of moves satisfies the 17-minute constraint.
+This brings the abstract model to life in a way that purely functional output cannot.
+\\[1em]
+The state sequence functionality addresses a different limitation: the functions from
+the previous tasks only expose the final state and total duration of an execution,
+with no visibility into the intermediate steps. By introducing the \texttt{ListDurLog}
+monad and the associated functions, it becomes possible to trace the full path from
+the initial state to the goal, inspect every intermediate state, and confirm that the
+constraints of the problem are respected at each move. Functions like
+\texttt{printBestPath} and \texttt{printBestPath2} then use this infrastructure to
+automatically find and display an optimal solution.
+\\[1em]
+One of the most striking observations across this task is how much of the new code
+is structurally identical to code already written in the previous tasks, despite
+operating over a different monad. The clearest example is the pair
+\texttt{execLog} and \texttt{exec}:
+\begin{minted}{haskell}
+exec :: Int -> State -> ListDur State
+exec 0 s = return s
+exec n s = do s' <- allValidPlays s
+              exec (n-1) s'
+ 
+execLog :: Int -> State -> ListDurLog State
+execLog 0 s = return s
+execLog n s = do s' <- allValidPlaysLog s
+                 execLog (n-1) s'
+\end{minted}
+The two functions are letter-for-letter identical in structure. The only differences
+are the return type (\texttt{ListDur} vs \texttt{ListDurLog}) and the helper called
+(\texttt{allValidPlays} vs \texttt{allValidPlaysLog}). The recursive logic, the base
+case, and the \texttt{do} notation are completely unchanged, because the bind
+operation handles all the monad-specific bookkeeping — duration accumulation in
+\texttt{ListDur}, and duration accumulation plus log concatenation in
+\texttt{ListDurLog} — invisibly and automatically.
+\\[1em]
+The same pattern appears in \texttt{playsLog} vs \texttt{plays} from the second task:
+\begin{minted}{haskell}
+plays :: [Move] -> State -> DistDur State
+plays []     s = return s
+plays (m:ms) s = do s' <- play m s
+                    plays ms s'
+ 
+playsLog :: [Move] -> State -> ListDurLog State
+playsLog []     s = return s
+playsLog (m:ms) s = do s' <- playLog m s
+                       playsLog ms s'
+\end{minted}
+\texttt{plays} sequences moves over a probability distribution, accumulating
+probabilities and durations. \texttt{playsLog} sequences moves over a non-deterministic
+list, accumulating durations and state logs. Yet both are written in exactly the same
+way, because the monad abstracts over those differences entirely.
+\\[1em]
+This recurring pattern illustrates one of the fundamental advantages of monadic
+programming: the same high-level control flow — sequencing steps and accumulating effects — can be expressed once and reused across entirely different
+computational contexts simply by changing the monad. The programmer writes the logic;
+the monad handles the effects.
+\chapter{Conclusion}
+In this report, I completed the three tasks related to the modelling and analysis of a cyber-physical system using monads.\\
+
+The successful completion of these tasks demonstrates an understanding of the concepts and techniques associated with monads and their application in cyber-physical systems.\\
+
+Each task explored monads from a different angle: the first used non-determinism and duration to model and verify the system; the second introduced probability to reason about uncertain crossing times; and the third applied the \texttt{IO} monad for interactivity and a logging monad to reconstruct solution traces. Together, they show how the same monadic mechanism adapts naturally to very different computational contexts.\\
+
+I enjoyed this assignment because it gave me hands-on experience with monads, helping me understand that they are quite useful and not as intimidating as they initially appear.
 
 \end{document}
