@@ -394,6 +394,28 @@ instance Monad ListDurLog where
     Duration (t', (log2, y)) <- remLDL (k x)
     return $ Duration (t + t', (log1 ++ log2, y))
 \end{minted}
+\end{frame}
+
+\begin{frame}[fragile]{3rd task}
+\begin{minted}[
+fontsize=\small,
+bgcolor=gray!10,
+linenos,
+breaklines
+]{haskell}
+manyLDLChoice :: [ListDurLog a] -> ListDurLog a
+manyLDLChoice = LDL . concatMap remLDL
+\end{minted}
+
+\begin{minted}[
+fontsize=\small,
+bgcolor=gray!10,
+linenos,
+breaklines
+]{haskell}
+manyChoice :: [ListDur a] -> ListDur a
+manyChoice = LD . concat . (map remLD)
+\end{minted}
 I implemented functions playLog, playsLog, allValidPlaysLog, execLog and more...
 \end{frame}
 
