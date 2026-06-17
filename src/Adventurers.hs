@@ -90,7 +90,7 @@ exec n s = do s' <- allValidPlays s
 --}
 leq17 :: Bool
 leq17 = any (\(Duration (t,s)) -> s == gFinal && t <= 17)
-  (remLD (manyChoice [exec n gInit | n <- [0..]]))
+  (remLD (manyChoice [exec n gInit | n <- [0..5]]))
 
 -- auxiliary function
 gFinal :: State
