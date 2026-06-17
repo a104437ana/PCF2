@@ -255,6 +255,15 @@ bgcolor=gray!10,
 linenos,
 breaklines
 ]{haskell}
+data DistDur a = DD (Dist (Duration a)) deriving Show
+\end{minted}
+
+\begin{minted}[
+fontsize=\small,
+bgcolor=gray!10,
+linenos,
+breaklines
+]{haskell}
 instance Ord State where
 compare s1 s2 = compare (show s1) (show s2)
 \end{minted}
