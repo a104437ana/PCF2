@@ -1,0 +1,9 @@
+*.aux
+*.log
+*.toc
+*.pdf
+*.nav
+*.out
+*.snm
+*.vrb
+_minted-presentation/
