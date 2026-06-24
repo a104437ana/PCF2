@@ -3,6 +3,7 @@
 -- this file to do that :)
 {-# LANGUAGE FlexibleInstances #-}
 module Adventurers where
+import Data.Foldable
 
 import DurationMonad
 import Probability
@@ -92,6 +93,14 @@ exec2 :: Int -> State -> ListDur State
 exec2 0 s = return s
 exec2 n s = allValidPlays s >>= exec2 (n-1)
 
+-- another way
+exec3 :: Int -> State -> ListDur State
+exec3 n = foldr (\l f s -> allValidPlays s >>= f) return [1..n]
+
+-- another way
+exec4 :: Int -> State -> ListDur State
+exec4 n s = foldlM (\x _ -> allValidPlays x) s [1..n]
+
 {-- 
  - Is it possible for all adventurers to be on the other side
  - in <=17 min and not exceeding 5 moves ? 
@@ -167,6 +176,14 @@ plays (m:ms) s = do s' <- play m s
 plays2 :: [Move] -> State -> DistDur State 
 plays2 []     s = return s
 plays2 (m:ms) s = play m s >>= plays2 ms
+
+-- another way
+plays3 :: [Move] -> State -> DistDur State
+plays3 l = foldr (\m f st -> play m st >>= f) return l
+
+-- another way 
+plays4 :: [Move] -> State -> DistDur State
+plays4 l s = foldlM (flip play) s l
 
 -- auxiliary function
 distExample :: DistDur State
